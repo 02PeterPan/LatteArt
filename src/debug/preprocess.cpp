@@ -111,8 +111,81 @@ namespace la::debug {
         std::printf("All filter tests passed.\n");
     }
 
+    static void runLabTests() {
+        // Each pixel is stored in B, G, R order.
+        const unsigned char colors[6][3] = {
+            {0,   0,   0},    // black
+            {255, 255, 255},  // white
+            {128, 128, 128},  // gray
+            {0,   0,   255},  // red
+            {0,   255, 0},    // green
+            {255, 0,   0}     // blue
+        };
+
+        const char* names[6] = {
+            "black", "white", "gray", "red", "green", "blue"
+        };
+
+        // Approximate sRGB -> CIE Lab values, D65 reference white.
+        const float expected[6][3] = {
+            {0.000f,   0.000f,    0.000f},
+            {100.000f, 0.000f,    0.000f},
+            {53.585f,  0.000f,    0.000f},
+            {53.241f,  80.092f,   67.203f},
+            {87.735f, -86.183f,   83.179f},
+            {32.297f,  79.188f, -107.860f}
+        };
+
+        cv::Mat input(1, 6, CV_8UC3);
+        unsigned char* pixels = input.ptr<unsigned char>(0);
+
+        for (int x = 0; x < 6; ++x) {
+            for (int c = 0; c < 3; ++c) {
+                pixels[3 * x + c] = colors[x][c];
+            }
+        }
+
+        cv::Mat L, a, b;
+        basic::bgrToLab(input, L, a, b);
+
+        const cv::Mat* channels[3] = { &L, &a, &b };
+
+        for (int c = 0; c < 3; ++c) {
+            if (channels[c]->rows != 1 ||
+                channels[c]->cols != 6 ||
+                channels[c]->type() != CV_32FC1) {
+                throw std::runtime_error("Lab output format mismatch");
+            }
+        }
+
+        for (int x = 0; x < 6; ++x) {
+            for (int c = 0; c < 3; ++c) {
+                const float actual = channels[c]->ptr<float>(0)[x];
+
+                // Allow small rounding differences in reference values.
+                if (!std::isfinite(actual) ||
+                    std::fabs(actual - expected[x][c]) > 0.03f) {
+                    std::printf(
+                        "[FAIL] Lab %s channel %d: expected %.3f, got %.3f\n",
+                        names[x], c, expected[x][c], actual);
+                    throw std::runtime_error("Lab test failed");
+                }
+            }
+
+            std::printf(
+                "[PASS] Lab %s: L=%.3f a=%.3f b=%.3f\n",
+                names[x],
+                L.ptr<float>(0)[x],
+                a.ptr<float>(0)[x],
+                b.ptr<float>(0)[x]);
+        }
+
+        std::printf("All Lab tests passed.\n");
+    }
+
     int runPreprocess(const Args& args) {
         runFilterTests();
+        runLabTests();
 
         if (args.empty()) {
             std::printf("usage: --debug preprocess <photo.jpg>\n");
