@@ -183,9 +183,93 @@ namespace la::debug {
         std::printf("All Lab tests passed.\n");
     }
 
+    static void runClaheTests() {
+        // Test 1: one tile with four equally populated brightness bins.
+        // A sufficiently high clip limit disables clipping for this input.
+        cv::Mat ramp(1, 4, CV_32FC1);
+        ramp.ptr<float>(0)[0] = 0.f;
+        ramp.ptr<float>(0)[1] = 85.f / 255.f;
+        ramp.ptr<float>(0)[2] = 170.f / 255.f;
+        ramp.ptr<float>(0)[3] = 1.f;
+
+        const cv::Mat mapped = basic::clahe(ramp, 1, 1, 256.f);
+
+        expectNear(mapped.ptr<float>(0)[0], 0.25f);
+        expectNear(mapped.ptr<float>(0)[1], 0.50f);
+        expectNear(mapped.ptr<float>(0)[2], 0.75f);
+        expectNear(mapped.ptr<float>(0)[3], 1.00f);
+        std::printf("[PASS] CLAHE cumulative histogram\n");
+
+        // Test 2: clipping and redistribution on a single tile.
+        // 256 black pixels, clipLimit=1 -> bin limit=1.
+        // Excess 255 counts are redistributed to bins 0..254.
+        // Therefore bin 0 has 2 counts and maps to 2/256.
+        cv::Mat black(16, 16, CV_32FC1);
+        for (int y = 0; y < black.rows; ++y) {
+            for (int x = 0; x < black.cols; ++x) {
+                black.ptr<float>(y)[x] = 0.f;
+            }
+        }
+
+        const cv::Mat clipped = basic::clahe(black, 1, 1, 1.f);
+
+        for (int y = 0; y < clipped.rows; ++y) {
+            for (int x = 0; x < clipped.cols; ++x) {
+                expectNear(clipped.ptr<float>(y)[x], 2.f / 256.f);
+            }
+        }
+        std::printf("[PASS] CLAHE clipping and redistribution\n");
+
+        // Test 3: uneven tile dimensions and output range.
+        cv::Mat image(7, 11, CV_32FC1);
+        for (int y = 0; y < image.rows; ++y) {
+            for (int x = 0; x < image.cols; ++x) {
+                image.ptr<float>(y)[x] =
+                    static_cast<float>(y * image.cols + x) /
+                    static_cast<float>(image.rows * image.cols - 1);
+            }
+        }
+
+        const cv::Mat result = basic::clahe(image, 3, 2, 2.f);
+
+        if (result.rows != image.rows ||
+            result.cols != image.cols ||
+            result.type() != CV_32FC1) {
+            throw std::runtime_error("CLAHE output format mismatch");
+        }
+
+        for (int y = 0; y < result.rows; ++y) {
+            for (int x = 0; x < result.cols; ++x) {
+                const float value = result.ptr<float>(y)[x];
+
+                if (!std::isfinite(value) || value < 0.f || value > 1.f) {
+                    throw std::runtime_error("CLAHE output outside 0..1");
+                }
+            }
+        }
+        std::printf("[PASS] CLAHE uneven tiles and output range\n");
+
+        // Test 4: default tile counts must also handle a 1x1 image.
+        cv::Mat tiny(1, 1, CV_32FC1);
+        tiny.ptr<float>(0)[0] = 0.5f;
+
+        const cv::Mat tinyResult = basic::clahe(tiny);
+
+        if (tinyResult.rows != 1 || tinyResult.cols != 1 ||
+            tinyResult.type() != CV_32FC1) {
+            throw std::runtime_error("CLAHE tiny output format mismatch");
+        }
+
+        expectNear(tinyResult.ptr<float>(0)[0], 1.f);
+        std::printf("[PASS] CLAHE tiny image\n");
+
+        std::printf("All CLAHE tests passed.\n");
+    }
+
     int runPreprocess(const Args& args) {
         runFilterTests();
         runLabTests();
+        runClaheTests();
 
         if (args.empty()) {
             std::printf("usage: --debug preprocess <photo.jpg>\n");
