@@ -8,6 +8,7 @@
 #include "basic/filter.h"
 #include "debug/debug.h"
 #include "io/io.h"
+#include "viz/report.h"
 
 namespace la::debug {
 
@@ -266,7 +267,65 @@ namespace la::debug {
         std::printf("All CLAHE tests passed.\n");
     }
 
+    static void previewReport() {
+        PatternSpec spec;
+        spec.name = "tulip";
+        spec.targetLayers = 3;
+
+        LayerResult reference;
+        reference.count = 3;
+        reference.fftCount = 3;
+
+        LayerResult user;
+        user.count = 3;
+        user.fftCount = 3;
+        user.spacingCV = 0.12f;
+        user.thicknessCV = 0.18f;
+        user.U = 0.80f;
+
+        QualityResult quality;
+        quality.contrast = {
+            0.70f, 0.80f, 0.90f, "Contrast is close to the reference."
+        };
+        quality.shape = {
+            0.75f, 0.90f, 0.80f, "Improve left-right symmetry."
+        };
+        quality.texture = {
+            0.70f, 0.85f, 0.85f, "Some surface bubbles are visible."
+        };
+        quality.position = {
+            0.08f, 0.02f, 0.90f, "Move the pattern closer to the center."
+        };
+        quality.size = {
+            0.30f, 0.35f, 0.80f, "The pattern is smaller than the reference."
+        };
+        quality.Q = 0.855f;
+
+        ScoreResult score;
+        score.deltaN = 0;
+        score.bandLow = 60.f;
+        score.bandHigh = 100.f;
+        score.U = user.U;
+        score.Q = quality.Q;
+        score.finalScore = 93.54f;
+
+        std::printf("\n[DEMO 1: synthetic scoring data]\n");
+        viz::printReport(spec, reference, user, quality, score);
+
+        // Preview the uncertain-result display as well.
+        user.fftCount = 2;
+        user.uncertain = true;
+        score.needsReview = true;
+
+        std::printf("\n[DEMO 2: synthetic uncertain result]\n");
+        viz::printReport(spec, reference, user, quality, score);
+    }
+
     int runPreprocess(const Args& args) {
+        if (!args.empty() && args[0] == "--report") {
+            previewReport();
+            return 0;
+        }
         runFilterTests();
         runLabTests();
         runClaheTests();
